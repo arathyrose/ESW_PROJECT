@@ -6,102 +6,107 @@
 char *wifi_ssid = "esw-m19@iiith";
 char *wifi_pwd = "e5W-eMai@3!20hOct";
 String cse_ip = "onem2m.iiit.ac.in";
-int microphonePin = 34;
+int sensor = 34;
 
 unsigned long myChannelNumber = 906986;
-const char * myWriteAPIKey = "CYUPS7BAIW79C1V4";
+const char *myWriteAPIKey = "CYUPS7BAIW79C1V4";
 
-WiFiClient  client;
-
-//StaticJsonBuffer<200> jsonBuffer;
-//JsonObject &user_data = jsonBuffer.createObject();
-//JsonObject &temp_user_data = jsonBuffer.createObject();
-//JsonObject &sensor_data = jsonBuffer.createObject();
+WiFiClient client;
 
 String cse_port = "443";
 String server = "http://" + cse_ip + ":" + cse_port + "/~/in-cse/in-name/";
 
 //"http://onem2m.iiit.ac.in:443/~/in-cse/in-name/Team38_Sound_Noise_around_the_campus/node_1"
 
-
 String createCI(String server, String ae, String cnt, String val)
 {
-    HTTPClient http;
-    http.begin(server + ae + "/" + cnt);
-    http.addHeader("X-M2M-Origin", "admin:admin");
-    http.addHeader("Content-Type", "application/json;ty=4");
-    int code = http.POST("{\"m2m:cin\": {\"cnf\": \"text/plain:0\",\"con\": " + String(val) + "}}");
-    http.end();
-    Serial.print(code);
-    delay(100);
+  HTTPClient http;
+  http.begin(server + ae + "/" + cnt);
+  http.addHeader("X-M2M-Origin", "admin:admin");
+  http.addHeader("Content-Type", "application/json;ty=4");
+  int code = http.POST("{\"m2m:cin\": {\"cnf\": \"text/plain:0\",\"con\": " + String(val) + "}}");
+  http.end();
+  Serial.print(code);
+  delay(100);
 }
 
 void setup()
 {
-    Serial.begin(9600);
-    pinMode(microphonePin, INPUT);
+  Serial.begin(9600);
+  pinMode(sensor, INPUT);
 
-    WiFi.mode(WIFI_STA);   
-    ThingSpeak.begin(client);  // Initialize ThingSpeak
-  
-    WiFi.mode(WIFI_STA);
-    WiFi.disconnect();
-    delay(100);
+  WiFi.mode(WIFI_STA);
+  ThingSpeak.begin(client); // Initialize ThingSpeak
 
-    WiFi.begin(wifi_ssid, wifi_pwd);
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  delay(100);
 
-    while (WiFi.status() != WL_CONNECTED)
-    {
-        delay(500);
-        Serial.println("Connecting to WiFi..");
-    }
-    Serial.println("Connected to the WiFi network");
-    Serial.println("Setup done");
+  WiFi.begin(wifi_ssid, wifi_pwd);
+
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.println("Connecting to WiFi..");
+  }
+  Serial.println("Connected to the WiFi network");
+  Serial.println("Setup done");
 }
 
-String double2string(double n, int ndec) {
-    String r = "";
-
-    int v = n;
-    r += v;     // whole number part
-    r += '.';   // decimal point
-    int i;
-    for (i=0;i<ndec;i++) {
-        // iterate through each decimal digit for 0..ndec 
-        n -= v;
-        n *= 10; 
-        v = n;
-        r += v;
-    }
-
-    return r;
+String double2string(double n, int ndec)
+{
+  String r = "";
+  int v = n;
+  r += v;   // whole number part
+  r += '.'; // decimal point
+  int i;
+  for (i = 0; i < ndec; i++)
+  {
+    // iterate through each decimal digit for 0..ndec
+    n -= v;
+    n *= 10;
+    v = n;
+    r += v;
+  }
+  return r;
 }
-
 
 void loop()
 {
-  float sample,db[200];
-  float DB_MAX=0;
-  for(int i=0;i<10;i++)
+  float sample;
+
+  //code starts here
+  double second;
+  float sample = analogRead(sensor);
+  unsigned long startMillis = millis(); // Start of sample window
+  double peakToPeak = 0;                // peak-to-peak level
+  double signalMax = 0;
+  double signalMin = 4096;
+  // collect data for 50 mS
+  unsigned int sampleWindow = 50;
+  while (millis() - startMillis < sampleWindow)
   {
-    sample = analogRead(microphonePin);
-    db[i]=(500* sample) / pow(2,12) ;
-    Serial.printf("%f ", db[i]);
-    if(DB_MAX<db[i])DB_MAX=db[i];
-    //String d=String(db[i]);
-    //s=String(s+" ");
-    //Serial.printf("\nSTRING: %s K\n", s);
-    delay(100);
+    sample = analogRead(sensor);
+    if (sample > signalMax)
+      signalMax = sample; // save just the max levels
+    else if (sample < signalMin)
+      signalMin = sample; // save just the min levels
   }
-  String sensor_string = double2string(DB_MAX,4);
-  Serial.printf("THE VALUE SENT IS %f\n",DB_MAX);
+  peakToPeak = signalMax - signalMin;    // max - min = peak-peak amplitude
+  double db = (peakToPeak * 5.0) / 4096; // convert to volts*/
+  double first = log10(db / 0.00631) * 20;
+  second = first + 94 - 44 - 25 - 10; //convert to decibels
+  delay(100);
+  //code ends here
+
+  String sensor_string = double2string(DB_MAX, 4);
+  Serial.printf("THE VALUE SENT IS %f\n", DB_MAX);
   //Serial.printf(" %s\n",sensor_string);
-    createCI(server, "Team38_Sound_Noise_around_the_campus", "node_1", sensor_string);
-    //Serial.println(s);
-    delay(1000);
-    Serial.println();
-    int x = ThingSpeak.writeField(myChannelNumber, 1, DB_MAX, myWriteAPIKey);
+  createCI(server, "Team38_Sound_Noise_around_the_campus", "node_1", sensor_string);
+  delay(1000);
+  Serial.println();
+  int x = ThingSpeak.writeField(myChannelNumber, 1, DB_MAX, myWriteAPIKey);
   Serial.println("Channel update successful.");
-  
-//*************    delay(15000);
+
+  //*************    delay(15000);
 }
